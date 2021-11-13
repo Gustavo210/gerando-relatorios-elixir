@@ -31,12 +31,13 @@ defmodule GenReport do
     "novembro",
     "dezembro"
   ]
+  defp getRaw(filename) do
+    filename
+    |> Parser.parse_file()
+  end
 
   def build(filename) when is_binary(filename) do
-    raw =
-      filename
-      |> Parser.parse_file()
-
+    raw = getRaw(filename)
     %{"all_hours" => all_hours} = Enum.reduce(raw, report_users_acc(), &SumAllHours.call/2)
 
     %{"hours_per_month" => hours_per_month} =
@@ -52,8 +53,32 @@ defmodule GenReport do
     }
   end
 
+  def build_from_many(filenames) when not is_list(filenames) do
+    {:error, "Please provide a list of strings"}
+  end
+
+  def build_from_many(filenames) do
+    filenames
+    |> Task.async_stream(&build(&1))
+    |> Enum.reduce(report_users_acc(), fn {:ok, list}, acc -> sum_all(list, acc) end)
+  end
+
   def build() do
     {:error, "Insira o nome de um arquivo"}
+  end
+
+  defp sum_all(result, acc) do
+    all_hours = merge_user_all_hours(result["all_hours"], acc["all_hours"])
+
+    %{
+      "all_hours" => all_hours
+    }
+  end
+
+  defp merge_user_all_hours(map1, map2) do
+    Map.merge(map1, map2, fn _key, value1, value2 ->
+      value1 + value2
+    end)
   end
 
   defp report_users_acc do
